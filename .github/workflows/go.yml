@@ -10,7 +10,6 @@ on:
     branches: [ "master" ]
 
 jobs:
-
   build:
     runs-on: ubuntu-latest
     steps:
@@ -21,8 +20,21 @@ jobs:
       with:
         go-version: '1.13'
 
-    - name: Build
-      run: go build -v ./...
+    - name: Build Admin
+      run: |
+        CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-w -s" -o release/linux_x64_admin admin/admin.go
+        CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-w -s" -o release/windows_x64_admin.exe admin/admin_win.go
+
+    - name: Build Agent
+      run: |
+        CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-w -s" -o release/linux_x64_agent agent/agent.go
+        CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-w -s" -o release/windows_x64_agent.exe agent/agent.go
 
     - name: Test
       run: go test -v ./...
+
+    - name: Upload Build Artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: stowaway-binaries
+        path: release/

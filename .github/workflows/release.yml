@@ -1,0 +1,124 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.13'
+
+    - name: Get version
+      id: get_version
+      run: |
+        if [[ $GITHUB_REF == refs/tags/* ]]; then
+          VERSION=${GITHUB_REF#refs/tags/}
+        else
+          VERSION=dev-$(date +'%Y%m%d%H%M%S')
+        fi
+        echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+        echo "Building version: $VERSION"
+
+    - name: Create release directory
+      run: mkdir -p release
+
+    - name: Build Admin binaries
+      run: |
+        echo "Building Admin binaries..."
+        CGO_ENABLED=0 GOOS=linux GOARCH=386 go build -trimpath -ldflags "-w -s" -o release/linux_x86_admin admin/admin.go
+        CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-w -s" -o release/linux_x64_admin admin/admin.go
+        CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-w -s" -o release/linux_arm64_admin admin/admin.go
+        CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-w -s" -o release/windows_x64_admin.exe admin/admin_win.go
+        CGO_ENABLED=0 GOOS=windows GOARCH=386 go build -trimpath -ldflags "-w -s" -o release/windows_x86_admin.exe admin/admin_win.go
+        CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags "-w -s" -o release/macos_x64_admin admin/admin.go
+        CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags "-w -s" -o release/macos_arm64_admin admin/admin.go
+        CGO_ENABLED=0 GOOS=freebsd GOARCH=386 go build -trimpath -ldflags "-w -s" -o release/freebsd_x86_admin admin/admin.go
+        CGO_ENABLED=0 GOOS=freebsd GOARCH=arm GOARM=5 go build -trimpath -ldflags "-w -s" -o release/freebsd_arm_admin admin/admin.go
+
+    - name: Build Agent binaries
+      run: |
+        echo "Building Agent binaries..."
+        CGO_ENABLED=0 GOOS=linux GOARCH=386 go build -trimpath -ldflags "-w -s" -o release/linux_x86_agent agent/agent.go
+        CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-w -s" -o release/linux_x64_agent agent/agent.go
+        CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-w -s" -o release/linux_arm64_agent agent/agent.go
+        CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-w -s" -o release/windows_x64_agent.exe agent/agent.go
+        CGO_ENABLED=0 GOOS=windows GOARCH=386 go build -trimpath -ldflags "-w -s" -o release/windows_x86_agent.exe agent/agent.go
+        CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags "-w -s" -o release/macos_x64_agent agent/agent.go
+        CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags "-w -s" -o release/macos_arm64_agent agent/agent.go
+        CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=5 go build -trimpath -ldflags "-w -s" -o release/arm_eabi5_agent agent/agent.go
+        CGO_ENABLED=0 GOOS=linux GOARCH=mipsle go build -trimpath -ldflags "-w -s" -o release/mipsel_agent agent/agent.go
+        CGO_ENABLED=0 GOOS=freebsd GOARCH=386 go build -trimpath -ldflags "-w -s" -o release/freebsd_x86_agent agent/agent.go
+        CGO_ENABLED=0 GOOS=freebsd GOARCH=arm GOARM=5 go build -trimpath -ldflags "-w -s" -o release/freebsd_arm_agent agent/agent.go
+
+    - name: List built artifacts
+      run: |
+        echo "Built artifacts:"
+        ls -lh release/
+        
+    - name: Calculate checksums
+      run: |
+        cd release
+        sha256sum * > SHA256SUMS
+        cat SHA256SUMS
+
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.get_version.outputs.VERSION }}
+        release_name: Release ${{ steps.get_version.outputs.VERSION }}
+        draft: false
+        prerelease: false
+        body: |
+          ## Stowaway Release ${{ steps.get_version.outputs.VERSION }}
+          
+          ### Admin Binaries
+          - Linux (x86): `linux_x86_admin`
+          - Linux (x64): `linux_x64_admin`
+          - Linux (ARM64): `linux_arm64_admin`
+          - Windows (x86): `windows_x86_admin.exe`
+          - Windows (x64): `windows_x64_admin.exe`
+          - macOS (x64): `macos_x64_admin`
+          - macOS (ARM64): `macos_arm64_admin`
+          - FreeBSD (x86): `freebsd_x86_admin`
+          - FreeBSD (ARM): `freebsd_arm_admin`
+          
+          ### Agent Binaries
+          - Linux (x86): `linux_x86_agent`
+          - Linux (x64): `linux_x64_agent`
+          - Linux (ARM64): `linux_arm64_agent`
+          - Linux (ARM EABI5): `arm_eabi5_agent`
+          - Linux (MIPSEL): `mipsel_agent`
+          - Windows (x86): `windows_x86_agent.exe`
+          - Windows (x64): `windows_x64_agent.exe`
+          - macOS (x64): `macos_x64_agent`
+          - macOS (ARM64): `macos_arm64_agent`
+          - FreeBSD (x86): `freebsd_x86_agent`
+          - FreeBSD (ARM): `freebsd_arm_agent`
+          
+          ### SHA256 Checksums
+          See `SHA256SUMS` file for checksums of all binaries.
+
+    - name: Upload Release Assets
+      uses: softprops/action-gh-release@v1
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        files: release/*
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
